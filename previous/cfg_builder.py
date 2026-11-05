@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import load_previous  # Disponibiliza os módulos das etapas anteriores.
 
-from ast_nodes import Block, FunctionDecl, IfStmt, Stmt, WhileStmt
-from cfg import BlockId, CFG, Jump
+from ast_nodes import Block, FunctionDecl, IfStmt, Stmt, WhileStmt, ReturnStmt
+from cfg import BlockId, CFG, Jump, ScopeExit, Return, Branch
+
 
 
 class CFGBuilder:
@@ -26,19 +27,86 @@ class CFGBuilder:
         None indica que os caminhos deste bloco não alcançam o próximo comando.
         """
 
-        raise NotImplementedError("implemente CFGBuilder._build_block")
+        for statement in block.statements:
+            if current is None:
+                break
+
+            current = self._build_statement(statement, current)
+
+        if current is not None:
+            self.cfg.blocks[current].operations.append(ScopeExit(block.metadata["scope"]))
+
+        return current
+    
 
     def _build_statement(self, statement: Stmt, current: BlockId) -> BlockId | None:
         """TODO: incorpore um comando ao CFG e devolva sua continuação normal."""
 
-        raise NotImplementedError("implemente CFGBuilder._build_statement")
+        if current is None:
+            return current
+
+        if isinstance(statement, Block):
+            return self._build_block(statement, current)
+
+        elif isinstance(statement, IfStmt):
+            return self._build_if(statement, current)
+
+        elif isinstance(statement, WhileStmt):
+            return self._build_while(statement, current)
+
+        elif isinstance(statement, ReturnStmt):
+            self.cfg.terminate(current, Return(statement=statement))
+            return None
+        
+        else:
+            self.cfg.blocks[current].operations.append(statement)
+            return current
+
+
 
     def _build_if(self, statement: IfStmt, current: BlockId) -> BlockId | None:
         """TODO: construa o fluxo da condicional e devolva sua continuação."""
 
-        raise NotImplementedError("implemente CFGBuilder._build_if")
+        true_block = self.cfg.new_block().id
+        false_block = self.cfg.new_block().id
+
+        self.cfg.terminate(current, Branch(condition=statement.condition, true_target=true_block, false_target=false_block))
+
+        true_ending = self._build_statement(statement.then_block, true_block)
+
+        if statement.else_block:
+            false_ending = self._build_statement(statement.else_block, false_block)
+        else: 
+            false_ending = false_block
+
+        if true_ending is None and false_ending is None:
+            return None
+
+        id_juncao = self.cfg.new_block().id
+        
+        if true_ending is not None:
+            self.cfg.terminate(true_ending, Jump(target=id_juncao))
+
+        if false_ending is not None:
+            self.cfg.terminate(false_ending, Jump(target=id_juncao))
+
+        return id_juncao
+
 
     def _build_while(self, statement: WhileStmt, current: BlockId) -> BlockId | None:
         """TODO: construa o fluxo do laço e devolva sua continuação."""
+        condition_block = self.cfg.new_block().id
+        body_block = self.cfg.new_block().id
+        out_block = self.cfg.new_block().id
 
-        raise NotImplementedError("implemente CFGBuilder._build_while")
+        self.cfg.terminate(current, Jump(target=condition_block))
+
+        self.cfg.terminate(condition_block, Branch(condition=statement.condition, true_target=body_block, false_target= out_block))
+
+        end_body = self._build_statement(statement.body, body_block)
+
+        if end_body is None:
+            self.cfg.terminate(end_body, Jump(target=condition_block))
+
+        return out_block
+
