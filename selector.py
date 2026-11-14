@@ -61,6 +61,8 @@ class Selector:
 
             # Mapeia cada filho do nó à exigência específica (Need) da regra
             for child, requirement in zip(node_children, rule_pattern.children):
+                if requirement is None:
+                    continue
                 if not isinstance(requirement, Need):
                     return None
                 matched_subproblems.append((child, requirement.result))
